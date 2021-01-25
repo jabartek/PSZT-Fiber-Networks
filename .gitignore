@@ -3,4 +3,6 @@ build/
 *.exe
 *.scons*
 *.obj
+*.o
+bin/
 data/demandMartices
