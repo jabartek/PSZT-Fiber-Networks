@@ -19,8 +19,9 @@ int main(){
         cities.emplace_back(
             ++cityNum,
             node.attribute("id").value(),
-            node.child("coordinates").child("x").child_value(),
-            node.child("coordinates").child("y").child_value());
+            std::stod(node.child("coordinates").child("x").child_value()),
+            std::stod(node.child("coordinates").child("y").child_value())
+        );
     }
     std::map<std::string, int> citiesMap;
     for(auto &v : cities){
