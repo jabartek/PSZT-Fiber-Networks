@@ -4,7 +4,8 @@
 #include <map>
 #include <string>
 #include <limits>
-
+#include <algorithm>
+#include <random>
 #include <cmath>
 
 #include <pugixml.hpp>
@@ -12,6 +13,7 @@
 #include <typeinfo>
 
 #include "adjacency_matrix.hpp"
+#include "logisticRegression.hpp"
 
 constexpr double PI = 3.14159265358979323846;
 constexpr double RADIANS = PI / 180.0;
@@ -25,6 +27,57 @@ double calcDist(double x1, double y1, double x2, double y2)
     dist = acos(dist);
 
     return dist * RADIUS;
+}
+
+double getClass(double distance)
+{
+    distance /= 1000;
+    if (distance < 200.0)
+        return 3.0;
+    else if (distance >= 200.0 && distance < 400.0)
+        return 2.0;
+    else if (distance >= 400.0 && distance < 600.0)
+        return 1.0;
+    else
+        return 0.0;
+}
+
+double getModuleClass(double result1, double result2)
+{
+    if (result1 == 0.0)
+    {
+        if (result2 == 0.0)
+            return 0.0;
+        else
+            return 1.0;
+    }
+    else
+    {
+        if (result2 == 0.0)
+            return 2.0;
+        else
+            return 3.0;
+    }
+}
+
+std::vector<double> getFormattedInput(std::vector<int> path)
+{
+    std::vector<double> inputs(51);
+    fill(inputs.begin(), inputs.end(), 0.0);
+    for (auto city : path)
+    {
+        inputs[city] = 1.0;
+    }
+    inputs[inputs.size() - 1] = 1.0;
+    return inputs;
+}
+
+std::pair<std::vector<Path>, std::vector<Path>> getTrainAndValidationDataset(std::vector<Path>& data, double trainPercentage =0.8){
+    auto rng = std::default_random_engine{};
+    shuffle(data.begin(), data.end(), rng);
+    std::vector<Path> train(data.begin(), data.begin()+ data.size()*trainPercentage);
+    std::vector<Path> validate(data.begin()+ data.size()*trainPercentage, data.end());
+    return std::make_pair(train,validate);
 }
 
 int main()
@@ -69,25 +122,71 @@ int main()
     }
 
     mat.distsAll();
+    mat.addPaths(8500);
 
     auto paths = mat.paths;
+    std::pair<std::vector<Path>, std::vector<Path>> data = getTrainAndValidationDataset(paths);
+    std::vector<Path> train = data.first;
+    std::vector<Path> validate = data.second;
 
-    std::sort(begin(paths), end(paths), [](auto const &t1, auto const &t2) {
-        return std::get<1>(t1) < std::get<1>(t2); // or use a custom compare function
-    });
+    const double step = 3.0;
+    LogisticRegressionModule logModuleParityBit(step, "./data/ParityLogistic.csv");
+    LogisticRegressionModule logModuleLowerHalf(step, "./data/LowerHalfLogistic.csv");
+    LogisticRegressionModule logModuleUpperHalf(step, "./data/UpperHalfLogistic.csv");
+    std::vector<double> inputs;
 
-    int i = 0;
-    for (auto &v : paths)
+    for (Path path : train)
     {
-        std::cout << "\nPath:\t" << ++i << "\tDistance:\t" << std::get<1>(v) / 1000.f << "\n";
-        for (auto c : std::get<0>(v))
+        // std::cout << "********************************************************" << '\n';
+        double classification = getClass(path.second);
+        if (classification == 0 || classification == 1)
         {
-            if (c != *(std::get<0>(v).begin()))
-                std::cout << "->";
-            std::cout << std::get<1>(cities[c]);
-        };
-        std::cout << "\n";
+            logModuleParityBit.train(getFormattedInput(path.first), 0.0);
+            if (classification == 0)
+            {
+                logModuleLowerHalf.train(getFormattedInput(path.first), 0.0);
+            }
+            else
+            {
+                logModuleLowerHalf.train(getFormattedInput(path.first), 1.0);
+            }
+        }
+        else if (classification == 2 || classification == 3)
+        {
+            logModuleParityBit.train(getFormattedInput(path.first), 1.0);
+            if (classification == 2)
+            {
+                logModuleUpperHalf.train(getFormattedInput(path.first), 0.0);
+            }
+            else
+            {
+                logModuleUpperHalf.train(getFormattedInput(path.first), 1.0);
+            }
+        }
     }
+
+    double badGuesses = 0.0;
+    double goodGuesses = 0.0;
+    for (Path path : validate)
+    {
+        double predict2;
+        double predict1 = logModuleParityBit.getPrediction(getFormattedInput(path.first));
+        if (predict1 == 0.0)
+            predict2 = logModuleLowerHalf.getPrediction(getFormattedInput(path.first));
+        else
+            predict2 = logModuleUpperHalf.getPrediction(getFormattedInput(path.first));
+
+        if (getModuleClass(predict1, predict2) == getClass(path.second))
+            goodGuesses++;
+        else
+            badGuesses++;
+    }
+
+    std::cout<<"STATS:\n";
+    std::cout<<"GOOD GUESSES:\t"<<goodGuesses<<"\n";
+    std::cout<<"BAD GUESSES:\t"<<badGuesses<<"\n";
+    std::cout<<"% GOOD:\t"<<(goodGuesses/validate.size()) * 100<<"\n";
+    std::cout<<"% BAD:\t"<<(badGuesses/validate.size()) * 100<<"\n";
 
     return 0;
 }

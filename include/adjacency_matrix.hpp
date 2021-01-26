@@ -104,4 +104,42 @@ public:
             dists(i);
         }
     }
+
+        Path generatePath()
+    {
+        std::vector<bool> visited(size_);
+        Path path;
+        int len = 0;
+        int last = rand() % size_;
+        path.first.push_back(last);
+        visited[last] = true;
+        int maxlen = rand() % 1000000;
+        // std::cout<<"\nmaxlen:\t"<<maxlen<<" ";
+        while (path.first.size() < 15 && path.second < maxlen)
+        {
+            std::vector<int> possible;
+            for (auto v : neighbors_[last])
+            {
+                if (!visited[v])
+                    possible.push_back(v);
+            }
+            if (possible.size() == 0)
+                break;
+            int next = possible[rand() % possible.size()];
+            path.first.push_back(next);
+            path.second += arr_[last * size_ + next];
+            visited[next] = true;
+            last = next;
+        }
+        // std::cout<<path.second<<"\t";
+        return path;
+    }
+    void addPaths(int count)
+    {
+        for (int i = 0; i < count; ++i)
+        {
+            paths.push_back(generatePath());
+            // std::cout<<i<<"\t"<<paths.back().second<<"\t"<<paths.back().first.size()<<"\n";
+        }
+    }
 };
